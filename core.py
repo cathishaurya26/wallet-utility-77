@@ -1,69 +1,66 @@
+import hashlib
 import json
-from decimal import Decimal
-from typing import Any, Dict, List, Union
+from dataclasses import dataclass, field
+from typing import List, Dict
 
-def normalize_address(address: str) -> str:
-    address = address.strip()
-    if address.startswith("0x"):
-        address = address[2:]
-    return "0x" + address.lower()
+@dataclass
+class Transaction:
+    sender: str
+    recipient: str
+    amount: float
+    signature: str = ""
 
-def convert_to_base_unit(amount: Union[int, str, float], decimals: int = 18) -> Decimal:
-    if isinstance(amount, str):
-        if amount.startswith("0x"):
-            amount = int(amount, 16)
-        else:
-            amount = int(float(amount))
-    elif isinstance(amount, float):
-        amount = int(amount)
-    return Decimal(amount) / (Decimal(10) ** decimals)
+@dataclass
+class Wallet:
+    address: str
+    balance: float = 0.0
+    transactions: List[Transaction] = field(default_factory=list)
 
-def is_valid_address(address: str) -> bool:
-    if not address or not isinstance(address, str):
+    def generate_key_pair(self) -> Dict[str, str]:
+        private = hashlib.sha256(self.address.encode()).hexdigest()
+        public = hashlib.sha256(private.encode()).hexdigest()
+        return {"private": private, "public": public}
+
+    def sign(self, tx: Transaction, private_key: str) -> str:
+        data = f"{tx.sender}{tx.recipient}{tx.amount}{private_key}"
+        return hashlib.sha256(data.encode()).hexdigest()
+
+    def add_transaction(self, tx: Transaction):
+        self.transactions.append(tx)
+        self.balance -= tx.amount
+
+    def get_balance(self) -> float:
+        return self.balance
+
+def create_new_wallet(address: str) -> Wallet:
+    return Wallet(address=address)
+
+def process_transfer(from_wallet: Wallet, to_wallet: Wallet, amount: float, private_key: str) -> bool:
+    if from_wallet.balance < amount:
         return False
-    normalized = normalize_address(address)
-    if len(normalized) != 42:
-        return False
-    return all(c in "0123456789abcdef" for c in normalized[2:].lower())
+    tx = Transaction(
+        sender=from_wallet.address,
+        recipient=to_wallet.address,
+        amount=amount
+    )
+    signature = from_wallet.sign(tx, private_key)
+    tx.signature = signature
+    from_wallet.add_transaction(tx)
+    to_wallet.balance += amount
+    to_wallet.add_transaction(tx)
+    return True
 
-def process_wallet_data(raw_input: str) -> Dict[str, Any]:
-    try:
-        data: Dict[str, Any] = json.loads(raw_input)
-    except (json.JSONDecodeError, TypeError):
-        return {"status": "error", "message": "Invalid input data"}
-    result: Dict[str, Any] = {"status": "success"}
-    if "address" in data:
-        addr = data["address"]
-        result["valid_address"] = is_valid_address(addr)
-        if result["valid_address"]:
-            result["normalized_address"] = normalize_address(addr)
-        else:
-            result["normalized_address"] = None
-    if "transactions" in data and isinstance(data["transactions"], list):
-        processed_txs: List[Dict[str, Any]] = []
-        total_value = Decimal(0)
-        for tx in data["transactions"]:
-            if isinstance(tx, dict) and "value" in tx:
-                val = convert_to_base_unit(tx["value"])
-                total_value += val
-                processed_txs.append({
-                    "from": normalize_address(tx.get("from", "")),
-                    "to": normalize_address(tx.get("to", "")),
-                    "value": str(val)
-                })
-        result["transactions"] = processed_txs
-        result["total_value"] = str(total_value)
-    return result
-
-def aggregate_balances(balances: List[Dict[str, Any]]) -> Dict[str, str]:
-    agg: Dict[str, Decimal] = {}
-    for bal in balances:
-        if isinstance(bal, dict):
-            asset = bal.get("asset", "unknown")
-            dec = bal.get("decimals", 18)
-            amt = convert_to_base_unit(bal.get("amount", 0), dec)
-            if asset in agg:
-                agg[asset] += amt
-            else:
-                agg[asset] = amt
-    return {k: str(v) for k, v in agg.items()}
+def serialize_wallet(wallet: Wallet) -> str:
+    data = {
+        "address": wallet.address,
+        "balance": wallet.balance,
+        "transactions": [
+            {
+                "sender": t.sender,
+                "recipient": t.recipient,
+                "amount": t.amount,
+                "signature": t.signature
+            } for t in wallet.transactions
+        ]
+    }
+    return json.dumps(data, indent=2)
