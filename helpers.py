@@ -1,43 +1,41 @@
 import re
-from decimal import Decimal
+from typing import Any, Dict, List
 
-def validate_address(address):
+def validate_address(address: str) -> bool:
     if not isinstance(address, str):
         return False
-    if len(address) < 26 or len(address) > 35:
-        return False
-    pattern = r'^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$'
-    return re.match(pattern, address) is not None
+    return bool(re.match(r'^0x[a-fA-F0-9]{40}$', address))
 
-def validate_amount(amount_str):
+def validate_amount(amount: Any) -> bool:
     try:
-        amount = Decimal(amount_str)
-        return amount > 0
+        val = float(amount)
+        return val > 0
     except (ValueError, TypeError):
         return False
 
-def process_wallet_operation(address, amount_str):
-    if not validate_address(address):
-        return False, "invalid address format"
-    if not validate_amount(amount_str):
-        return False, "invalid amount"
-    amount = Decimal(amount_str)
-    print(f"validating transaction to {address} for {amount} btc")
-    return True, "operation processed"
+def validate_transaction(tx: Dict[str, Any]) -> bool:
+    if not isinstance(tx, dict):
+        return False
+    return validate_address(tx.get('to')) and validate_amount(tx.get('value'))
 
-def main_processing_loop():
-    print("starting wallet utility")
-    while True:
-        address = input("address: ").strip()
-        if address == "exit":
-            print("exiting")
-            break
-        amount_str = input("amount: ").strip()
-        success, message = process_wallet_operation(address, amount_str)
-        if success:
-            print(message)
-        else:
-            print("error:", message)
+def process_transactions(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    results = []
+    for tx in transactions:
+        if not validate_transaction(tx):
+            continue
+        processed = {
+            'to': tx['to'].lower(),
+            'value': float(tx['value']),
+            'status': 'validated'
+        }
+        results.append(processed)
+    return results
 
-if __name__ == "__main__":
-    main_processing_loop()
+if __name__ == '__main__':
+    sample_data = [
+        {'to': '0x' + '1' * 40, 'value': '10.5'},
+        {'to': 'invalid', 'value': '0'},
+        {'to': '0x' + '2' * 40, 'value': 25}
+    ]
+    processed = process_transactions(sample_data)
+    print(processed)
