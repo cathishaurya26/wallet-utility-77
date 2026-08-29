@@ -1,35 +1,54 @@
-import hashlib
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Set
 
-class Processor:
-    def __init__(self) -> None:
-        self._cache: Dict[str, Dict[str, Any]] = {}
+class WalletProcessor:
+    """Handles processing of cryptocurrency wallet transactions."""
 
-    def process_wallets(self, wallets: List[str]) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        for wallet in wallets:
-            if wallet in self._cache:
-                results.append(self._cache[wallet])
+    def __init__(self, address: str) -> None:
+        """Initialize the wallet processor with an address."""
+        self.address: str = address
+        self.transactions: List[Dict[str, Any]] = []
+
+    def add_transaction(self, transaction: Dict[str, Any]) -> bool:
+        """Add a transaction if valid.
+
+        Returns True if added, False otherwise.
+        """
+        if self._is_valid_transaction(transaction):
+            self.transactions.append(transaction)
+            return True
+        return False
+
+    def _is_valid_transaction(self, tx: Dict[str, Any]) -> bool:
+        """Check if transaction has required fields and valid amount."""
+        required_keys: List[str] = ["sender", "receiver", "amount", "asset"]
+        if not all(key in tx for key in required_keys):
+            return False
+        amount = tx.get("amount")
+        return isinstance(amount, (int, float)) and amount > 0
+
+    def compute_balance(self, asset: str = "ETH") -> float:
+        """Compute the balance for a specific asset."""
+        balance: float = 0.0
+        for tx in self.transactions:
+            if tx.get("asset") != asset:
                 continue
-            processed = self._compute_wallet(wallet)
-            self._cache[wallet] = processed
-            results.append(processed)
-        return results
+            if tx.get("receiver") == self.address:
+                balance += float(tx["amount"])
+            elif tx.get("sender") == self.address:
+                balance -= float(tx["amount"])
+        return balance
 
-    def _compute_wallet(self, wallet: str) -> Dict[str, Any]:
-        data = wallet.encode("utf-8")
-        hash_val = hashlib.sha256(data).hexdigest()
-        balance = int(hash_val[:16], 16) % 1000000000
-        return {"address": wallet, "balance": balance, "hash": hash_val[:10]}
+    def get_transaction_count(self) -> int:
+        """Return the total number of transactions."""
+        return len(self.transactions)
 
-    def deduplicate_and_process(self, wallets: List[str]) -> List[Dict[str, Any]]:
-        seen = set()
-        unique = []
-        for w in wallets:
-            if w not in seen:
-                seen.add(w)
-                unique.append(w)
-        return self.process_wallets(unique)
-
-    def clear_cache(self) -> None:
-        self._cache.clear()
+    def generate_report(self) -> Dict[str, Any]:
+        """Generate a summary report of the wallet."""
+        assets: Set[str] = {tx.get("asset", "UNKNOWN") for tx in self.transactions}
+        report: Dict[str, Any] = {
+            "wallet_address": self.address,
+            "transaction_count": self.get_transaction_count(),
+            "assets": list(assets),
+            "balances": {asset: self.compute_balance(asset) for asset in assets}
+        }
+        return report
