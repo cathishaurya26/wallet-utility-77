@@ -1,63 +1,37 @@
-import json
 import hashlib
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Any
+import os
+from typing import Dict, Optional
 
-@dataclass
-class Transaction:
-    tx_id: str
-    amount: float
-    address: str
-    timestamp: int
+class WalletHandler:
+    def __init__(self, network: str = "mainnet") -> None:
+        self.network = network
+        self.wallets: Dict[str, Dict[str, str]] = {}
 
-def parse_raw_data(raw_json: str) -> List[Dict[str, Any]]:
-    try:
-        return json.loads(raw_json)
-    except (json.JSONDecodeError, TypeError):
-        return []
+    def create_wallet(self, name: str) -> str:
+        if name in self.wallets:
+            raise ValueError("wallet already exists")
+        seed = os.urandom(32)
+        private_key = hashlib.sha256(seed).hexdigest()
+        address = "0x" + hashlib.sha256(private_key.encode()).hexdigest()[:40]
+        self.wallets[name] = {"private_key": private_key, "address": address}
+        return address
 
-def create_transactions(data_list: List[Dict[str, Any]]) -> List[Transaction]:
-    transactions: List[Transaction] = []
-    for item in data_list:
-        if isinstance(item, dict) and all(k in item for k in ['tx_id', 'amount', 'address', 'timestamp']):
-            try:
-                tx = Transaction(
-                    tx_id=str(item['tx_id']),
-                    amount=float(item['amount']),
-                    address=str(item['address']),
-                    timestamp=int(item['timestamp'])
-                )
-                transactions.append(tx)
-            except (ValueError, TypeError):
-                continue
-    return transactions
+    def get_balance(self, name: str) -> float:
+        if name not in self.wallets:
+            return 0.0
+        address = self.wallets[name]["address"]
+        balance = int(address[2:10], 16) / 1e8
+        return balance
 
-def validate_address(address: str) -> bool:
-    if not isinstance(address, str) or len(address) < 26 or len(address) > 35:
-        return False
-    valid_chars = set('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz')
-    return all(c in valid_chars for c in address)
+    def transfer(self, from_name: str, to_address: str, amount: float) -> str:
+        if from_name not in self.wallets:
+            raise ValueError("sender wallet not found")
+        if amount <= 0:
+            raise ValueError("invalid amount")
+        private_key = self.wallets[from_name]["private_key"]
+        tx_data = f"{from_name}:{to_address}:{amount}"
+        signature = hashlib.sha256((private_key + tx_data).encode()).hexdigest()
+        return signature
 
-def filter_valid_transactions(transactions: List[Transaction]) -> List[Transaction]:
-    return [tx for tx in transactions if validate_address(tx.address) and tx.amount > 0]
-
-def compute_hash(data: str) -> str:
-    return hashlib.sha256(data.encode('utf-8')).hexdigest()
-
-def process_wallet(wallet: Dict[str, Any]) -> Dict[str, Any]:
-    if 'transactions' not in wallet:
-        wallet['transactions'] = []
-    wallet['tx_count'] = len(wallet['transactions'])
-    wallet['checksum'] = compute_hash(json.dumps(wallet, sort_keys=True))
-    return wallet
-
-def handle_crypto_data(raw_data: str) -> str:
-    parsed_data = parse_raw_data(raw_data)
-    transactions = create_transactions(parsed_data)
-    valid_transactions = filter_valid_transactions(transactions)
-    result = {
-        'valid_transactions': [asdict(tx) for tx in valid_transactions],
-        'total_count': len(valid_transactions),
-        'invalid_count': len(transactions) - len(valid_transactions)
-    }
-    return json.dumps(result, indent=2)
+    def get_wallet_info(self, name: str) -> Optional[Dict[str, str]]:
+        return self.wallets.get(name)
