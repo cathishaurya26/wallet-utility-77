@@ -1,66 +1,63 @@
 import hashlib
-import json
-from dataclasses import dataclass, field
-from typing import List, Dict
-
-@dataclass
-class Transaction:
-    sender: str
-    recipient: str
-    amount: float
-    signature: str = ""
-
-@dataclass
-class Wallet:
-    address: str
-    balance: float = 0.0
-    transactions: List[Transaction] = field(default_factory=list)
-
-    def generate_key_pair(self) -> Dict[str, str]:
-        private = hashlib.sha256(self.address.encode()).hexdigest()
-        public = hashlib.sha256(private.encode()).hexdigest()
-        return {"private": private, "public": public}
-
-    def sign(self, tx: Transaction, private_key: str) -> str:
-        data = f"{tx.sender}{tx.recipient}{tx.amount}{private_key}"
-        return hashlib.sha256(data.encode()).hexdigest()
-
-    def add_transaction(self, tx: Transaction):
-        self.transactions.append(tx)
-        self.balance -= tx.amount
-
-    def get_balance(self) -> float:
-        return self.balance
-
-def create_new_wallet(address: str) -> Wallet:
-    return Wallet(address=address)
-
-def process_transfer(from_wallet: Wallet, to_wallet: Wallet, amount: float, private_key: str) -> bool:
-    if from_wallet.balance < amount:
-        return False
-    tx = Transaction(
-        sender=from_wallet.address,
-        recipient=to_wallet.address,
-        amount=amount
-    )
-    signature = from_wallet.sign(tx, private_key)
-    tx.signature = signature
-    from_wallet.add_transaction(tx)
-    to_wallet.balance += amount
-    to_wallet.add_transaction(tx)
-    return True
-
-def serialize_wallet(wallet: Wallet) -> str:
-    data = {
-        "address": wallet.address,
-        "balance": wallet.balance,
-        "transactions": [
-            {
-                "sender": t.sender,
-                "recipient": t.recipient,
-                "amount": t.amount,
-                "signature": t.signature
-            } for t in wallet.transactions
-        ]
-    }
-    return json.dumps(data, indent=2)
+from functools import lru_cache
+from typing import List, Dict, Optional
+class CoreModule:
+    def __init__(self, cache_size: int = 256):
+        self.cache_size = cache_size
+    @lru_cache(maxsize=256)
+    def compute_address_hash(self, address: str) -> str:
+        return hashlib.sha256(address.encode('utf-8')).hexdigest()
+    @lru_cache(maxsize=256)
+    def validate_and_hash_transaction(self, tx_data: str) -> Optional[str]:
+        if not tx_data or len(tx_data) < 10:
+            return None
+        return hashlib.sha512(tx_data.encode('utf-8')).hexdigest()
+    def batch_process_transactions(self, transactions: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        processed = []
+        seen_hashes = set()
+        for tx in transactions:
+            tx_str = str(tx)
+            tx_hash = self.validate_and_hash_transaction(tx_str)
+            if tx_hash is None or tx_hash in seen_hashes:
+                continue
+            seen_hashes.add(tx_hash)
+            address = tx.get('address', '')
+            addr_hash = self.compute_address_hash(address)
+            processed.append({'original': tx, 'tx_hash': tx_hash, 'address_hash': addr_hash, 'status': 'processed'})
+        return processed
+    def optimize_balance_calculations(self, balances: Dict[str, float]) -> Dict[str, float]:
+        if not balances:
+            return {}
+        total = sum(balances.values())
+        if total == 0:
+            return {k: 0.0 for k in balances}
+        optimized = {}
+        for key, value in balances.items():
+            if value > 0:
+                optimized[key] = value / total * 100
+            else:
+                optimized[key] = 0.0
+        return optimized
+    def filter_high_value_wallets(self, wallets: List[Dict[str, float]], threshold: float = 1000.0) -> List[Dict[str, float]]:
+        filtered = []
+        for wallet in wallets:
+            balance = wallet.get('balance', 0.0)
+            if balance >= threshold:
+                filtered.append(wallet)
+        return filtered
+    def process_wallet_data(self, data: List[Dict]) -> Dict:
+        if not data:
+            return {'count': 0, 'total': 0.0}
+        transactions = [d for d in data if 'tx' in d]
+        processed_txs = self.batch_process_transactions(transactions)
+        balances = {}
+        for item in data:
+            addr = item.get('address')
+            bal = item.get('balance', 0)
+            if addr:
+                if addr in balances:
+                    balances[addr] += bal
+                else:
+                    balances[addr] = bal
+        optimized_balances = self.optimize_balance_calculations(balances)
+        return {'processed_count': len(processed_txs), 'optimized_balances': optimized_balances, 'high_value': self.filter_high_value_wallets(data)}
