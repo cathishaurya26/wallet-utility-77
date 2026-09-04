@@ -1,48 +1,52 @@
 import re
-from typing import Any, Dict
-
-ETH_ADDRESS_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
-BTC_ADDRESS_REGEX = re.compile(r"^(1|3|bc1)[a-zA-Z0-9]{25,39}$")
+from typing import Union
 
 
-def is_valid_eth_address(address: str) -> bool:
-    if not isinstance(address, str):
-        return False
-    return bool(ETH_ADDRESS_REGEX.match(address))
+class WalletValidator:
+    """Validates cryptocurrency wallet addresses and transaction inputs."""
 
+    ETH_ADDRESS_PATTERN = re.compile(r"^0x[a-fA-F0-9]{40}$")
+    BTC_ADDRESS_PATTERN = re.compile(r"^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}$")
 
-def is_valid_btc_address(address: str) -> bool:
-    if not isinstance(address, str):
-        return False
-    return bool(BTC_ADDRESS_REGEX.match(address))
+    @classmethod
+    def is_valid_eth_address(cls, address: str) -> bool:
+        """Check if the provided string is a valid Ethereum address.
 
+        Args:
+            address: The wallet address string to validate.
 
-def validate_amount(amount: Any) -> bool:
-    if isinstance(amount, (int, float)):
-        return amount > 0
-    if isinstance(amount, str):
-        try:
-            return float(amount) > 0
-        except ValueError:
+        Returns:
+            True if valid format, False otherwise.
+        """
+        if not isinstance(address, str):
             return False
-    return False
+        return bool(cls.ETH_ADDRESS_PATTERN.match(address))
 
+    @classmethod
+    def is_valid_btc_address(cls, address: str) -> bool:
+        """Check if the provided string is a valid Bitcoin address.
 
-def validate_transaction_payload(payload: Dict[str, Any]) -> bool:
-    required_fields = {"to_address", "amount", "currency"}
-    if not isinstance(payload, dict) or not required_fields.issubset(payload.keys()):
-        return False
+        Args:
+            address: The wallet address string to validate.
 
-    currency = str(payload.get("currency", "")).upper()
-    address = payload.get("to_address")
-    amount = payload.get("amount")
+        Returns:
+            True if valid format, False otherwise.
+        """
+        if not isinstance(address, str):
+            return False
+        return bool(cls.BTC_ADDRESS_PATTERN.match(address))
 
-    if not validate_amount(amount):
-        return False
+    @staticmethod
+    def validate_amount(amount: Union[int, float], min_value: float = 0.0001) -> bool:
+        """Validate transaction amount against minimum operational limits.
 
-    if currency == "ETH":
-        return is_valid_eth_address(address)
-    if currency == "BTC":
-        return is_valid_btc_address(address)
+        Args:
+            amount: Numeric transfer value to verify.
+            min_value: Minimum allowed value for the transaction.
 
-    return bool(address and isinstance(address, str))
+        Returns:
+            True if amount is numeric and exceeds minimum threshold.
+        """
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            return False
+        return amount >= min_value
