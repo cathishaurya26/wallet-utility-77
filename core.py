@@ -1,32 +1,32 @@
-import hashlib
-import hmac
-from functools import lru_cache
-from typing import Tuple
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Optional
 
+class CryptoConverter:
+    def __init__(self, precision: int = 8):
+        self.precision = precision
 
-class WalletCore:
-    def __init__(self, seed: bytes):
-        self.seed = seed
-        self.master_key, self.master_chain_code = self._derive_master_node(seed)
-
-    @staticmethod
-    @lru_cache(maxsize=1024)
-    def _derive_master_node(seed: bytes) -> Tuple[bytes, bytes]:
-        out = hmac.new(b"Bitcoin seed", seed, hashlib.sha512).digest()
-        return out[:32], out[32:]
+    def format_amount(self, value: float) -> str:
+        """Formats float values to specific precision."""
+        quantize_str = '1.' + '0' * self.precision
+        amount = Decimal(str(value)).quantize(Decimal(quantize_str), rounding=ROUND_HALF_UP)
+        return format(amount, f'.{self.precision}f')
 
     @staticmethod
-    @lru_cache(maxsize=8192)
-    def derive_child_node(
-        parent_key: bytes, parent_chain_code: bytes, index: int
-    ) -> Tuple[bytes, bytes]:
-        is_hardened = index >= 0x80000000
-        if is_hardened:
-            data = b"\\x00" + parent_key + index.to_bytes(4, byteorder="big")
-        else:
-            data = parent_key + index.to_bytes(4, byteorder="big")
+    def validate_address(address: str, chain: str) -> bool:
+        """Simple validation for crypto addresses."""
+        if chain == 'btc':
+            return len(address) in range(26, 36) and address.isalnum()
+        if chain == 'eth':
+            return len(address) == 42 and address.startswith('0x')
+        return False
 
-        out = hmac.new(parent_chain_code, data, hashlib.sha512).digest()
-        return out[:32], out[32:]
+    def calculate_fee(self, amount: float, rate: float) -> Decimal:
+        """Calculates network transaction fee."""
+        return Decimal(str(amount)) * Decimal(str(rate))
 
-    def derive_path(self
+    def safe_parse(self, data: Optional[str]) -> Decimal:
+        """Safe parsing for string inputs."""
+        try:
+            return Decimal(data or '0')
+        except Exception:
+            return Decimal('0')
