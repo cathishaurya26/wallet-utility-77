@@ -1,41 +1,34 @@
-import re
-from typing import Any, Dict, List
+import hashlib
+import secrets
+from typing import Optional
 
-def validate_address(address: str) -> bool:
-    if not isinstance(address, str):
+def generate_entropy(bits: int = 256) -> bytes:
+    return secrets.token_bytes(bits // 8)
+
+def compute_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+def format_address(pubkey: bytes) -> str:
+    return f"0x{pubkey.hex()}"
+
+def validate_checksum(address: str) -> bool:
+    if not address.startswith("0x") or len(address) != 66:
         return False
-    return bool(re.match(r'^0x[a-fA-F0-9]{40}$', address))
+    return all(c in "0123456789abcdefABCDEF" for c in address[2:])
 
-def validate_amount(amount: Any) -> bool:
+def truncate_address(address: str, length: int = 6) -> str:
+    if len(address) <= length * 2:
+        return address
+    return f"{address[:length+2]}...{address[-length:]}"
+
+def parse_amount(amount: str) -> float:
     try:
-        val = float(amount)
-        return val > 0
-    except (ValueError, TypeError):
-        return False
+        return float(amount)
+    except ValueError:
+        return 0.0
 
-def validate_transaction(tx: Dict[str, Any]) -> bool:
-    if not isinstance(tx, dict):
-        return False
-    return validate_address(tx.get('to')) and validate_amount(tx.get('value'))
-
-def process_transactions(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    results = []
-    for tx in transactions:
-        if not validate_transaction(tx):
-            continue
-        processed = {
-            'to': tx['to'].lower(),
-            'value': float(tx['value']),
-            'status': 'validated'
-        }
-        results.append(processed)
-    return results
-
-if __name__ == '__main__':
-    sample_data = [
-        {'to': '0x' + '1' * 40, 'value': '10.5'},
-        {'to': 'invalid', 'value': '0'},
-        {'to': '0x' + '2' * 40, 'value': 25}
-    ]
-    processed = process_transactions(sample_data)
-    print(processed)
+def get_network_config(mainnet: bool = True) -> dict:
+    return {
+        "rpc_url": "https://mainnet.infura.io" if mainnet else "https://sepolia.infura.io",
+        "chain_id": 1 if mainnet else 11155111
+    }
