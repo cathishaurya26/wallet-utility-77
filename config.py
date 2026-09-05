@@ -1,30 +1,31 @@
+from typing import Dict, Any, Optional
 import os
-from typing import Dict, Any
-from dataclasses import dataclass
 
-@dataclass(frozen=True)
 class WalletConfig:
-    network: str
-    rpc_url: str
-    timeout: int
+    """Configuration management for wallet-utility-77."""
 
-def load_network_config(network_name: str) -> WalletConfig:
-    """Initialize configuration based on network selection."""
-    configs: Dict[str, Dict[str, Any]] = {
-        "mainnet": {"url": "https://mainnet.infura.io", "timeout": 30},
-        "testnet": {"url": "https://sepolia.infura.io", "timeout": 15}
-    }
+    def __init__(self, env: str = "production") -> None:
+        self.env: str = env
+        self.settings: Dict[str, Any] = self._load_settings()
 
-    if network_name not in configs:
-        raise ValueError(f"Unsupported network: {network_name}")
+    def _load_settings(self) -> Dict[str, Any]:
+        """Retrieve base configuration settings."""
+        return {
+            "rpc_url": os.getenv("RPC_URL", "https://mainnet.infura.io/v3/"),
+            "timeout": int(os.getenv("REQUEST_TIMEOUT", "30")),
+            "retries": int(os.getenv("MAX_RETRIES", "3")),
+            "debug": self.env == "development"
+        }
 
-    settings = configs[network_name]
-    return WalletConfig(
-        network=network_name,
-        rpc_url=settings["url"],
-        timeout=settings["timeout"]
-    )
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
+        """Access configuration value by key."""
+        return self.settings.get(key, default)
 
-def get_environment_variable(key: str, default: str = "") -> str:
-    """Retrieve system environment variables with defaults."""
-    return os.getenv(key, default)
+    def validate(self) -> bool:
+        """Check if critical configuration keys exist."""
+        return "rpc_url" in self.settings
+
+def get_config(env: Optional[str] = None) -> WalletConfig:
+    """Factory function for configuration instantiation."""
+    environment: str = env or os.getenv("APP_ENV", "production")
+    return WalletConfig(env=environment)
