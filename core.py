@@ -1,32 +1,28 @@
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional
+from typing import Union
 
 class CryptoConverter:
     def __init__(self, precision: int = 8):
         self.precision = precision
 
-    def format_amount(self, value: float) -> str:
-        """Formats float values to specific precision."""
-        quantize_str = '1.' + '0' * self.precision
-        amount = Decimal(str(value)).quantize(Decimal(quantize_str), rounding=ROUND_HALF_UP)
-        return format(amount, f'.{self.precision}f')
+    def to_decimal(self, amount: Union[str, float, int]) -> Decimal:
+        return Decimal(str(amount)).quantize(
+            Decimal(10) ** -self.precision, 
+            rounding=ROUND_HALF_UP
+        )
 
-    @staticmethod
-    def validate_address(address: str, chain: str) -> bool:
-        """Simple validation for crypto addresses."""
-        if chain == 'btc':
-            return len(address) in range(26, 36) and address.isalnum()
-        if chain == 'eth':
-            return len(address) == 42 and address.startswith('0x')
+    def calculate_fee(self, amount: Decimal, rate: float) -> Decimal:
+        return (amount * Decimal(str(rate))).quantize(
+            Decimal(10) ** -self.precision, 
+            rounding=ROUND_HALF_UP
+        )
+
+def format_address(address: str) -> str:
+    if not address or len(address) < 10:
+        return address
+    return f"{address[:6]}...{address[-4:]}"
+
+def validate_ticker(ticker: str) -> bool:
+    if not isinstance(ticker, str):
         return False
-
-    def calculate_fee(self, amount: float, rate: float) -> Decimal:
-        """Calculates network transaction fee."""
-        return Decimal(str(amount)) * Decimal(str(rate))
-
-    def safe_parse(self, data: Optional[str]) -> Decimal:
-        """Safe parsing for string inputs."""
-        try:
-            return Decimal(data or '0')
-        except Exception:
-            return Decimal('0')
+    return 2 <= len(ticker) <= 8 and ticker.isalnum()
